@@ -2,8 +2,8 @@ package sentrygin
 
 import (
 	"context"
+	"fmt"
 	"net"
-	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -53,20 +53,21 @@ func (h *handler) handle(ctx *gin.Context) {
 	}
 	hub.Scope().SetRequest(ctx.Request)
 	ctx.Set(valuesKey, hub)
-	defer h.recoverWithSentry(hub, ctx.Request)
+	defer h.recoverWithSentry(hub, ctx)
 	ctx.Next()
 }
 
-func (h *handler) recoverWithSentry(hub *sentry.Hub, r *http.Request) {
+func (h *handler) recoverWithSentry(hub *sentry.Hub, r *gin.Context) {
 	if err := recover(); err != nil {
 		if !isBrokenPipeError(err) {
 			eventID := hub.RecoverWithContext(
-				context.WithValue(r.Context(), sentry.RequestContextKey, r),
+				context.WithValue(r.Request.Context(), sentry.RequestContextKey, r),
 				err,
 			)
 			if eventID != nil && h.waitForDelivery {
 				hub.Flush(h.timeout)
 			}
+			r.Error(fmt.Errorf("%v", err))
 		}
 		if h.repanic {
 			panic(err)
